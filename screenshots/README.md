@@ -1,12 +1,14 @@
 # Screenshots
 
-These are n8n execution screenshots from 2 October 2026. No keys or tokens are shown.
+n8n execution screenshots and one redacted log from 2 October 2026. No keys or tokens are shown, and personal identifiers in the Meta log are redacted.
 
 | File | What it shows |
 |---|---|
-| `01_run1149_manipal.png` | Real run for Manipal Payment and Identity Solutions (Q1 FY27). The workflow downloaded the PDF, Gemini extracted the P&L, the JSON was parsed, the number check ran and the HTML table was built. The image step (hcti.io) returned 401 because the keys in Config were still placeholders, so the workflow used the text version. The send step then failed and the run ended on the "WhatsApp Failed" page. |
-| `02_run1148_no_pnl_found.png` | Error handling. A real BSE PDF for Rajasthan Tube Manufacturing Company Ltd contained no P&L table. The workflow took the "No P&L Found" path instead of crashing. |
-| `03_run1146_pranav.png` | Real run for Pranav Constructions (Q1 FY27). All nodes ran and the "Success" page appeared, which means the WhatsApp provider (Meta) accepted the request. Meta's delivery log later showed `failed` with error 131031 (Business Account locked), so the message did not reach the phone. |
-| `04_meta_log_131031.png` | Only if present: Meta's webhook log for the failed delivery (status failed, error 131031). Phone number hidden. |
+| `01_run1146_pranav_pipeline.png` | Run #1146, Pranav Constructions (Q1 FY27), first half: PDF to Base64, Gemini Analyze PDF, Check Gemini Response, Parse AI JSON, Route Parsed Result, Number Check. All nodes on the "ok" path ran (green). |
+| `02_run1146_pranav_delivery_success_page.png` | Run #1146, second half: Build HTML Table, HTML to Image, Split Recipients, Send WhatsApp, Aggregate Sends, Check WhatsApp, then the "Success" ending. Success means Meta accepted the request. |
+| `03_run1148_no_pnl_found.png` | Error handling. A real BSE PDF (Rajasthan Tube Manufacturing Company Ltd) had no P&L table, so the workflow took the "No P&L Found" path instead of crashing. |
+| `04_run1149_manipal_pipeline.png` | Run #1149, Manipal Payment and Identity Solutions (Q1 FY27), first half: extraction, parsing and number check on the "ok" path. |
+| `05_run1149_manipal_whatsapp_failed.png` | Run #1149, second half. The image step (hcti.io) returned 401 because its keys in Config were still placeholders, so the P&L was prepared as text. The send step then failed (Meta error 190) and the run ended on the "WhatsApp Failed" page. |
+| `06_meta_log_131031_redacted.json` | Meta's webhook log for run #1146's message: `status: failed`, error 131031 "Business Account locked". This is why the message never reached the phone. Identifiers are redacted. It is text copied from the log, not a screenshot. |
 
-Note: "Success" in this workflow means the provider accepted the request. It does not prove the message was delivered.
+Note: "Success" in this workflow means the provider accepted the request. It does not prove the message was delivered. File 06 shows this case.
