@@ -1,0 +1,1040 @@
+{
+  "name": "Niveshaay - Financial Results Pipeline (Twilio)",
+  "nodes": [
+    {
+      "id": "98f05e37-f15e-521d-b0e5-de52c2f2f56a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -540
+      ],
+      "parameters": {
+        "color": 4,
+        "width": 580,
+        "height": 460,
+        "content": "## Niveshaay - Financial Results Pipeline (Twilio edition)\n\n**Flow:**\n1. Form Trigger accepts Company Name + Result PDF URL.\n2. Config Set node holds Twilio Account SID, From number, and the\n   comma-separated recipient list. Edit it once and you are done.\n3. IF validates URL (must start with http and end with .pdf).\n4. HTTP Request downloads the PDF as a file (continue on fail).\n5. Code node converts the binary PDF to base64.\n6. HTTP Request sends PDF + the AI prompt to Gemini\n   (gemini-3.5-flash) using a Header Auth credential.\n7. Code node parses the Gemini response. Routes to error endings\n   if 'no pnl found' or invalid JSON.\n7b. Code node (Number Check) re-derives EBITDA margin, PAT margin\n     and PBT from the AI numbers; if any differ by more than 0.05,\n     adds a warning to the WhatsApp caption. Does NOT modify the\n     AI JSON or stop the flow.\n8. Code node builds a styled HTML P&L table (iValue-style).\n9. HTTP Request posts the HTML to hcti.io (Basic Auth). hcti.io\n   returns a PUBLIC PNG URL — Twilio fetches it directly, so no\n   base64 step is needed.\n10. Code node (Split Recipients) splits the comma-separated recipient\n    list into one item per recipient. Twilio WhatsApp cannot send\n    to groups, so we send one message per person.\n11. HTTP Request (Send WhatsApp - Twilio) POSTs to Twilio's\n    /Messages endpoint for each recipient (Continue On Fail).\n12. Code node (Aggregate Sends) counts successes and failures.\n13. IF routes to Success only if ALL sends succeeded.\n\n**Credentials required:** Gemini Header Auth, hcti.io Basic Auth,\nTwilio Basic Auth (Account SID as username, Auth Token as password).\n\nEdit the `Config` Set node to change Twilio details and recipients."
+      },
+      "name": "Flow Overview"
+    },
+    {
+      "id": "0fa6af5f-7004-5df2-9847-31d6bc3aa5e0",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -220,
+        -120
+      ],
+      "parameters": {
+        "formTitle": "Financial Results Processor",
+        "formDescription": "Paste a company name and a BSE/NSE result PDF link. The pipeline will extract the P&L, render it as a styled image, and deliver it to the configured WhatsApp recipients via Twilio.",
+        "responseMode": "responseNodes",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Company Name",
+              "requiredField": true,
+              "fieldType": "text",
+              "placeholder": "e.g. Tata Motors"
+            },
+            {
+              "fieldLabel": "Result PDF URL",
+              "requiredField": true,
+              "fieldType": "text",
+              "placeholder": "https://www.bseindia.com/.../result.pdf"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Financial Results Processor",
+      "webhookId": "03d0872b-5b85-53fb-b154-952b72ec29c3"
+    },
+    {
+      "id": "3b42eaad-2912-5d43-a637-1362cfdd9c40",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        40,
+        -120
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "company_name",
+              "value": "={{ $json['Company Name'] ?? $json.company_name }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "result_pdf_url",
+              "value": "={{ ($json['Result PDF URL'] ?? $json.result_pdf_url ?? '').toString().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "delivery_provider",
+              "value": "meta",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "recipient_numbers",
+              "value": "91XXXXXXXXXX",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "meta_phone_number_id",
+              "value": "PASTE_META_PHONE_NUMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "meta_access_token",
+              "value": "PASTE_META_ACCESS_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "meta_api_version",
+              "value": "v23.0",
+              "type": "string"
+            },
+            {
+              "id": "a8",
+              "name": "evolution_url",
+              "value": "PASTE_EVOLUTION_URL",
+              "type": "string"
+            },
+            {
+              "id": "a9",
+              "name": "evolution_instance",
+              "value": "PASTE_EVOLUTION_INSTANCE",
+              "type": "string"
+            },
+            {
+              "id": "a10",
+              "name": "evolution_api_key",
+              "value": "PASTE_EVOLUTION_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "a11",
+              "name": "twilio_account_sid",
+              "value": "PASTE_TWILIO_ACCOUNT_SID",
+              "type": "string"
+            },
+            {
+              "id": "a12",
+              "name": "twilio_auth_token",
+              "value": "PASTE_TWILIO_AUTH_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "a13",
+              "name": "twilio_from",
+              "value": "PASTE_TWILIO_WHATSAPP_NUMBER",
+              "type": "string"
+            },
+            {
+              "id": "a14",
+              "name": "hcti_api_id",
+              "value": "PASTE_HCTI_API_ID",
+              "type": "string"
+            },
+            {
+              "id": "a15",
+              "name": "hcti_api_key",
+              "value": "PASTE_HCTI_API_KEY",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {},
+        "includeOtherFields": true
+      },
+      "name": "Config",
+      "notesInFlow": true,
+      "notes": "Edit these 3 values once. twilio_account_sid, twilio_from (sandbox: whatsapp:+14155238886), recipient_numbers (comma-separated, format whatsapp:+91XXXXXXXXXX)."
+    },
+    {
+      "id": "ac691910-8549-5e9e-9322-b0e6fbddf0d4",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        300,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0b23466d-e458-569b-a11c-668863650a30",
+              "leftValue": "={{ $json.result_pdf_url }}",
+              "rightValue": "/^https?:\\/\\/.+\\.pdf(\\?.*)?$/i",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Validate URL"
+    },
+    {
+      "id": "e8ae8083-124c-5066-b60d-0579e66fe2fc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        -240
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.result_pdf_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "application/pdf,*/*"
+            },
+            {
+              "name": "Referer",
+              "value": "https://www.bseindia.com/"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true,
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "name": "Download PDF",
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "032be03e-63b9-586d-b655-3f3a291c6ec5",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ec65bc87-1fd4-524d-8f65-000562a62fd1",
+              "leftValue": "={{ ($binary && $binary.data && /pdf|octet-stream/i.test(String($binary.data.mimeType || ''))) ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Download"
+    },
+    {
+      "id": "31f20f19-4499-5b3c-8aea-69fbfc9df804",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        -240
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Reads the downloaded PDF, converts it to base64 and builds the full Gemini request body.\n// The AI prompt below is the exact Section 3 prompt from the Niveshaay task PDF.\nconst PROMPT = \"You are a financial data processor that converts quarterly P&L statements into standardized JSON format. You are only to look at the consolidated financial results. The table can be under any form including but not limited 'FINANCIAL RESULTS FOR THE QUARTER / YEAR ENDED', 'STATEMENT OF AUDITED/UNADUITED CONSOLIDATED FINANCIAL RESULTS FOR THE HALF YEAR ENDED AND YEAR ENDED MARCH', 'CONSOLIDATED FINANCIAL RESULTS FOR THE QUARTER', 'Profit and Loss statement', 'PnL', 'Statement of Audited Financial Results for the Half Year & Year ended' and so on.\\n\\nCritical: Look and process the standalone statement only and only if consolidated statement is not present.\\n\\nImportant: If you don't find the profit and loss statement in the document just output no pnl found and nothing else.\\n\\n## 1. DATA EXTRACTION RULES\\n\\nCompany Name Extraction\\n1. **Identify:** Look for legal entity markers (\\\"Limited\\\", \\\"Ltd\\\", \\\"Pvt\\\", \\\"Inc\\\").\\n2. **Formatting:**\\n   * Use Title Case for names (e.g., \\\"Tata Motors\\\").\\n   * Keep acronyms ALL CAPS (e.g., \\\"ITC Limited\\\", \\\"H.G. Infra\\\").\\n   * If no name is found, output: \\\"Unknown Company\\\"\\n\\n## OUTPUT FORMAT (STRICT)\\n\\nReturn ONLY valid JSON with no explanations.\\n\\n### CRITICAL: Column count depends on the quarter type:\\n\\n**For Q1 and Q3** - output 4 columns per row (Particulars + 3 data columns):\\n{\\n\\\"company_name\\\": \\\"Tata Motors\\\",\\n\\\"quarter_type\\\": \\\"standard\\\",\\n\\\"row1\\\": [\\\"Particulars\\\", \\\"Q1 FY26\\\", \\\"Q4 FY25\\\", \\\"Q1 FY25\\\"],\\n\\\"row2\\\": [\\\"Revenue\\\", \\\"3611.02\\\", \\\"3347.70\\\", \\\"4132.67\\\"],\\n...\\n}\\n\\n**For Q2** - output 6 columns per row (Particulars + 5 data columns, adding H1 of current and previous year):\\n{\\n\\\"company_name\\\": \\\"Tata Motors\\\",\\n\\\"quarter_type\\\": \\\"extended\\\",\\n\\\"row1\\\": [\\\"Particulars\\\", \\\"Q2 FY26\\\", \\\"Q1 FY26\\\", \\\"Q2 FY25\\\", \\\"H1 FY26\\\", \\\"H1 FY25\\\"],\\n\\\"row2\\\": [\\\"Revenue\\\", \\\"450.50\\\", \\\"425.30\\\", \\\"380.20\\\", \\\"875.80\\\", \\\"740.50\\\"],\\n...\\n}\\n\\n**For Q4** - output 6 columns per row (Particulars + 5 data columns, adding full year current and previous year):\\n{\\n\\\"company_name\\\": \\\"Tata Motors\\\",\\n\\\"quarter_type\\\": \\\"extended\\\",\\n\\\"row1\\\": [\\\"Particulars\\\", \\\"Q4 FY26\\\", \\\"Q3 FY26\\\", \\\"Q4 FY25\\\", \\\"FY26\\\", \\\"FY25\\\"],\\n\\\"row2\\\": [\\\"Revenue\\\", \\\"450.50\\\", \\\"425.30\\\", \\\"380.20\\\", \\\"1800.00\\\", \\\"1650.00\\\"],\\n...\\n}\\n\\n## TABLE STRUCTURE\\n\\n### Column Headers\\n- Column 1: \\\"Particulars\\\"\\n- Column 2: Most recent quarter\\n- Column 3: Previous consecutive quarter\\n- Column 4: Same quarter from previous year\\n- Column 5 (Q2/Q4 only): H1 current year (Q2) OR Full Year current (Q4)\\n- Column 6 (Q2/Q4 only): H1 previous year (Q2) OR Full Year previous (Q4)\\n\\n### Quarter Naming Convention\\n- 30-Jun-25 -> Q1 FY26\\n- 30-Sep-25 -> Q2 FY26\\n- 31-Dec-25 -> Q3 FY26\\n- 31-Mar-26 -> Q4 FY26\\n\\n### Row Order (Standard P&L)\\n1. Revenue\\n2. Expenses (leave values blank - heading only)\\n3. [Expense line items - varies by company]\\n4. Gross Profit*\\n5. Gross Profit Margin*\\n6. Employee Benefit Expense\\n7. [Other operating expenses - varies]\\n8. Other expenses\\n9. Total Expenses*\\n10. EBITDA*\\n11. EBITDA Margin*\\n12. Depreciation\\n13. Finance Cost\\n14. Profit before Exceptional Items, Other Income*\\n15. Other Income\\n16. [Exceptional items - if present]\\n17. [Share of profit/loss in JV/Associate - if present]\\n18. Profit/Loss Before Tax*\\n19. Tax Expenses\\n20. PAT*\\n21. PAT Margin*\\n22. EPS (Basic)\\n\\n*Calculated if missing\\n\\nYou are required to look at the given data and intelligently add or remove fields.\\n\\nNote:\\n1. Service charges/Service Cost are not included in the gross profit calculation.\\n2. Revenue is revenue from operations and not total revenue.\\n3. If excise duty is present then there will be a net revenue = revenue - excise duty.\\n4. Make sure that the values you pick and output are of the correct quarters.\\n\\n## CALCULATION FORMULAS\\n\\n**Gross Profit** = Revenue - COGS-type expenses\\n**Gross Profit Margin** = (Gross Profit / Revenue) x 100\\n**Total Expenses** = Sum of all expense line items (excluding Depreciation and Finance Cost)\\n**EBITDA** = Revenue - Total Operating Expenses (excluding Depreciation, Finance Cost and other income)\\n**EBITDA Margin** = (EBITDA / Revenue) x 100\\n**Profit before Exceptional Items, Other Income** = EBITDA - Depreciation - Finance Cost\\n**Profit Before Tax** = EBITDA - Depreciation - Finance Cost + Other Income +/- Exceptional items +/- Share of profit/loss in JV\\n**PAT** = Profit Before Tax - Tax Expenses\\n**PAT Margin** = (PAT / Revenue) x 100\\n**EPS (Basic)** = Use provided value only; do not calculate\\n\\nFor Q2 and Q4, apply the same calculation formulas to the H1/FY columns.\\n\\n## DATA PROCESSING RULES\\n- Convert ALL values to Rs Crores\\n- Round to 2 decimal places\\n- Treat \\\"-\\\" or null as 0 (except for EPS)\\n- Add \\\"%\\\" suffix to all margin calculations\\n- All numeric values must be strings in JSON\\n- Verify all calculations before final output\";\n\nconst companyName = $('Config').first().json.company_name || 'Company';\nconst item = $input.all()[0];\nconst binKey = Object.keys(item.binary || {})[0];\nif (!binKey) {\n  throw new Error('No PDF file found from the Download PDF node.');\n}\nconst buffer = await this.helpers.getBinaryDataBuffer(0, binKey);\nconst base64 = buffer.toString('base64');\n\nconst gemini_body = {\n  contents: [{\n    parts: [\n      { text: PROMPT },\n      { inline_data: { mime_type: 'application/pdf', data: base64 } }\n    ]\n  }]\n};\n\nreturn [{ json: { company_name: companyName, gemini_body } }];\n"
+      },
+      "name": "PDF to Base64"
+    },
+    {
+      "id": "6e6d06ac-622b-5877-b80d-64e662902d1a",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        -240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.gemini_body) }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "name": "Gemini Analyze PDF",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_GEMINI_HEADER_AUTH_ID",
+          "name": "Gemini"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "id": "bef51c78-6cbc-5c5e-b88f-5fff557d6649",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f7f6e128-66c7-5aed-be55-ac41b0965fba",
+              "leftValue": "={{ ($json.candidates && $json.candidates.length > 0) ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check Gemini Response"
+    },
+    {
+      "id": "8dcd7d5b-93f4-5e35-80b0-be7807bd9574",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        -240
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "\nconst items = $input.all();\nconst item = items[0] || {};\nconst body = item.json || {};\n\nlet text = '';\ntry {\n  text = (body.candidates?.[0]?.content?.parts ?? [])\n    .filter(p => !p.thought)\n    .map(p => p.text || '')\n    .join('\\n')\n    .trim();\n} catch (e) {\n  text = '';\n}\n\nconst companyName = $('Config').first().json.company_name || 'Unknown Company';\n\nif (!text) {\n  return [{ json: { status: 'gemini_error', message: 'Empty response from Gemini.' } }];\n}\n\nif (text.toLowerCase().includes('no pnl found')) {\n  return [{ json: { status: 'no_pnl' } }];\n}\n\nlet cleaned = text.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/,'').trim();\n\nif (!cleaned.startsWith('{')) {\n  const m = cleaned.match(/\\{[\\s\\S]*\\}/);\n  if (m) cleaned = m[0];\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { status: 'invalid_json', raw: text.slice(0, 500) } }];\n}\n\nif (!parsed.company_name || parsed.company_name === 'Unknown Company') {\n  parsed.company_name = companyName;\n}\n\nreturn [{ json: { status: 'ok', data: parsed } }];\n"
+      },
+      "name": "Parse AI JSON"
+    },
+    {
+      "id": "08e5244e-f056-5372-a168-49eae67aaa27",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2120,
+        -240
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2d9f5c7a-899c-5185-81c7-d64ccf99a180",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "ok",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ok"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ecf4fca4-0081-564f-9648-355deeaa777f",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "no_pnl",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "no_pnl"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b089a424-fdd7-5a40-8e1a-01d3c2975791",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "invalid_json",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "invalid_json"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "7b133646-7583-5613-b726-cb61fe431f91",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "gemini_error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "gemini_error"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route Parsed Result",
+      "notes": "ok = continue, no_pnl = no P&L, invalid_json = bad JSON, gemini_error = empty response"
+    },
+    {
+      "id": "a9ef99c9-abf8-5017-bca8-b7cb8fe828bc",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2380,
+        -460
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "\n// Recalculates EBITDA margin, PAT margin, and Profit Before Tax from the AI\n// numbers. If any recalculated value differs from the AI value by more than\n// 0.05, sets a warning string that Build HTML Table / Split Recipients will\n// append to the WhatsApp caption.\n//\n// CRITICAL: This node does NOT change the AI JSON. It only adds a sibling\n// field `number_check_warning` that downstream nodes read.\n\nconst payload = $input.all()[0].json || {};\nconst data = payload.data || payload;\n\nconst rowKeys = Object.keys(data)\n  .filter(k => /^row\\d+$/.test(k))\n  .sort((a, b) => parseInt(a.slice(3), 10) - parseInt(b.slice(3), 10));\n\nfunction num(v) {\n  if (v === null || v === undefined) return null;\n  if (typeof v === 'number') return v;\n  const s = String(v).trim().replace(/%$/, '').replace(/,/g, '');\n  if (s === '' || s === '-' || s.toLowerCase() === 'na' || s.toLowerCase() === 'n/a') return null;\n  const n = Number(s);\n  return Number.isFinite(n) ? n : null;\n}\n\nfunction findRow(needles, excludeMargin = false) {\n  const nl = needles.map(s => s.toLowerCase());\n  for (const k of rowKeys) {\n    const row = data[k] || [];\n    const label = String(row[0] || '').toLowerCase();\n    if (excludeMargin && label.includes('margin')) continue;\n    if (nl.some(n => label.includes(n))) return row;\n  }\n  return null;\n}\n\nconst header = data.row1 || [];\nconst isExtended = (header.length >= 6) || (data.quarter_type || '').toLowerCase() === 'extended';\nconst dataCols = isExtended ? [1, 2, 3, 4, 5] : [1, 2, 3];\n\nconst revenueRow       = findRow(['revenue']);\nconst ebitdaRow        = findRow(['ebitda'], true);\nconst ebitdaMarginRow  = findRow(['ebitda margin']);\nconst patRow           = findRow(['pat'], true);\nconst patMarginRow     = findRow(['pat margin']);\nconst depreciationRow  = findRow(['depreciation']);\nconst financeCostRow   = findRow(['finance cost']);\nconst otherIncomeRow   = rowKeys.map(k => data[k] || []).find(r => /^other income/i.test(String(r[0] || '').trim())) || null;\nconst pbtRow           = findRow(['profit before tax', 'profit/loss before tax'], true);\nconst allRows = rowKeys.map(k => data[k] || []);\nconst exceptionalRow = allRows.find(r => /^exceptional/i.test(String(r[0] || '').trim())) || null;\nconst jvRow = allRows.find(r => /share of/i.test(String(r[0] || ''))) || null;\n\nconst warnings = [];\nconst TOLERANCE = 0.05;\n\nfor (const col of dataCols) {\n  const rev    = revenueRow      ? num(revenueRow[col])      : null;\n  const ebitda = ebitdaRow       ? num(ebitdaRow[col])       : null;\n  const ebitdaM = ebitdaMarginRow ? num(ebitdaMarginRow[col]) : null;\n  const pat    = patRow          ? num(patRow[col])          : null;\n  const patM   = patMarginRow    ? num(patMarginRow[col])    : null;\n  const dep    = depreciationRow ? num(depreciationRow[col]) : null;\n  const fc     = financeCostRow ? num(financeCostRow[col])  : null;\n  const oi     = otherIncomeRow ? num(otherIncomeRow[col])  : null;\n  const pbt    = pbtRow          ? num(pbtRow[col])          : null;\n\n  if (rev && rev !== 0 && ebitda !== null && ebitdaM !== null) {\n    const calc = (ebitda / rev) * 100;\n    if (Math.abs(calc - ebitdaM) > TOLERANCE) {\n      warnings.push(`Column ${header[col] || col}: EBITDA margin AI=${ebitdaM.toFixed(2)}% vs calc=${calc.toFixed(2)}%`);\n    }\n  }\n\n  if (rev && rev !== 0 && pat !== null && patM !== null) {\n    const calc = (pat / rev) * 100;\n    if (Math.abs(calc - patM) > TOLERANCE) {\n      warnings.push(`Column ${header[col] || col}: PAT margin AI=${patM.toFixed(2)}% vs calc=${calc.toFixed(2)}%`);\n    }\n  }\n\n  if (ebitda !== null && dep !== null && fc !== null && pbt !== null) {\n    const exc = exceptionalRow ? (num(exceptionalRow[col]) || 0) : 0;\n    const jv = jvRow ? (num(jvRow[col]) || 0) : 0;\n    const base = ebitda - dep - fc + (oi || 0);\n    const options = [base + exc + jv, base - exc - jv, base];\n    const okPbt = options.some(v => Math.abs(v - pbt) <= TOLERANCE);\n    if (!okPbt) {\n      warnings.push(`Column ${header[col] || col}: PBT AI=${pbt.toFixed(2)} vs calc=${options[0].toFixed(2)}`);\n    }\n  }\n}\n\nconst warningText = warnings.length === 0\n  ? ''\n  : 'Warning: some numbers may need a manual check.';\n\nreturn [{\n  json: {\n    status: 'ok',\n    data: data,\n    number_check_warning: warningText,\n    number_check_details: warnings\n  }\n}];\n"
+      },
+      "name": "Number Check"
+    },
+    {
+      "id": "861e9bf7-c37b-58f2-bcf0-a8308db23dcb",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -460
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "\n// Builds a styled HTML P&L table that visually mirrors the\n// iValue Infosolutions Limited sample image.\nconst DARK_GREEN = '#1d6b3e';\nconst LIGHT_BLUE = '#cfe2f3';\nconst BORDER = '#7f7f7f';\n\nconst HIGHLIGHT_ROWS = new Set([\n  'Gross Profit',\n  'Gross Profit Margin',\n  'EBITDA',\n  'EBITDA Margin',\n  'Profit before Exceptional Items, Other Income',\n  'Profit Before Tax',\n  'PAT',\n  'PAT Margin',\n]);\n\nconst NO_CHANGE_ROWS = new Set([\n  'Gross Profit Margin',\n  'EBITDA Margin',\n  'PAT Margin',\n  'EPS (Basic)',\n]);\n\nfunction num(v) {\n  if (v === null || v === undefined) return null;\n  if (typeof v === 'number') return v;\n  const s = String(v).trim().replace(/%$/, '').replace(/,/g, '');\n  if (s === '' || s === '-' || s.toLowerCase() === 'na' || s.toLowerCase() === 'n/a') return null;\n  const n = Number(s);\n  return Number.isFinite(n) ? n : null;\n}\n\nfunction pct(cur, cmp) {\n  const a = num(cur);\n  const b = num(cmp);\n  if (a === null || b === null || b === 0) return '';\n  const v = ((a - b) / Math.abs(b)) * 100;\n  const sign = v > 0 ? '+' : '';\n  return sign + v.toFixed(2) + '%';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nconst payload = $input.all()[0].json || {};\nconst data = payload.data || payload;\nconst companyName = data.company_name || 'Unknown Company';\nconst numberCheckWarning = payload.number_check_warning || '';\nconst quarterType = (data.quarter_type || 'standard').toLowerCase();\n\nconst rowKeys = Object.keys(data)\n  .filter(k => /^row\\d+$/.test(k))\n  .sort((a, b) => parseInt(a.slice(3), 10) - parseInt(b.slice(3), 10));\n\nconst rows = rowKeys.map(k => data[k] || []);\n\nconst header = rows[0] || [];\nconst headerCols = header.length;\nconst isExtended = headerCols >= 6 || quarterType === 'extended';\n\nlet cols;\nif (isExtended) {\n  cols = [\n    { label: header[0], kind: 'particulars' },\n    { label: header[1], kind: 'data', dataIndex: 1 },\n    { label: header[2], kind: 'data', dataIndex: 2 },\n    { label: 'Change (in %)', kind: 'change', cur: 1, cmp: 2 },\n    { label: header[3], kind: 'data', dataIndex: 3 },\n    { label: 'Change (in %)', kind: 'change', cur: 1, cmp: 3 },\n    { label: header[4], kind: 'data', dataIndex: 4 },\n    { label: header[5], kind: 'data', dataIndex: 5 },\n    { label: 'Change (in %)', kind: 'change', cur: 4, cmp: 5 },\n  ];\n} else {\n  cols = [\n    { label: header[0], kind: 'particulars' },\n    { label: header[1], kind: 'data', dataIndex: 1 },\n    { label: header[2], kind: 'data', dataIndex: 2 },\n    { label: 'Change (in %)', kind: 'change', cur: 1, cmp: 2 },\n    { label: header[3], kind: 'data', dataIndex: 3 },\n    { label: 'Change (in %)', kind: 'change', cur: 1, cmp: 3 },\n  ];\n}\n\nconst trs = [];\n\n{\n  const tds = [];\n  tds.push(`<th style=\"background:${LIGHT_BLUE};color:#000;border:1px solid ${BORDER};padding:4px 8px;font-weight:bold;text-align:left;\">Rs in Cr</th>`);\n  for (let i = 1; i < cols.length; i++) {\n    const c = cols[i];\n    const bg = c.kind === 'change' ? '#f3f3f3' : LIGHT_BLUE;\n    tds.push(`<th style=\"background:${bg};color:#000;border:1px solid ${BORDER};padding:4px 8px;font-weight:bold;text-align:right;\">${esc(c.label)}</th>`);\n  }\n  trs.push(`<tr>${tds.join('')}</tr>`);\n}\n\nfor (let r = 1; r < rows.length; r++) {\n  const row = rows[r] || [];\n  const label = String(row[0] || '').trim();\n  const highlight = HIGHLIGHT_ROWS.has(label);\n  const noChange = NO_CHANGE_ROWS.has(label) || label.toLowerCase() === 'eps (basic)' || label.toLowerCase().startsWith('eps');\n\n  const tds = [];\n  const labelStyle = highlight\n    ? `background:${DARK_GREEN};color:#fff;font-weight:bold;border:1px solid ${BORDER};padding:4px 8px;text-align:left;`\n    : `background:#fff;color:#000;border:1px solid ${BORDER};padding:4px 8px;text-align:left;`;\n  tds.push(`<td style=\"${labelStyle}\">${esc(label)}</td>`);\n\n  for (let i = 1; i < cols.length; i++) {\n    const c = cols[i];\n    let cellValue = '';\n    let styleExtra = '';\n    if (c.kind === 'data') {\n      cellValue = esc(row[c.dataIndex] != null ? row[c.dataIndex] : '');\n      styleExtra = highlight\n        ? `background:${DARK_GREEN};color:#fff;font-weight:bold;`\n        : `background:#fff;color:#000;`;\n    } else if (c.kind === 'change') {\n      if (noChange) {\n        cellValue = '';\n      } else {\n        cellValue = pct(row[c.cur], row[c.cmp]);\n      }\n      styleExtra = `background:#fafafa;color:#444;font-style:italic;`;\n    }\n    tds.push(`<td style=\"${styleExtra}border:1px solid ${BORDER};padding:4px 8px;text-align:right;font-size:11px;\">${cellValue}</td>`);\n  }\n  trs.push(`<tr>${tds.join('')}</tr>`);\n}\n\nconst tableHtml = `\n<table style=\"border-collapse:collapse;font-family:'Times New Roman',Times,serif;font-size:12px;width:100%;\">\n${trs.join('\\n')}\n</table>`;\n\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\" />\n<title>${esc(companyName)} - Financial Results</title>\n<style>\n  body { margin:0; padding:0; background:#ffffff; font-family:'Times New Roman',Times,serif; }\n  .wrap { width:780px; padding:0; }\n  .header {\n    background:${LIGHT_BLUE};\n    color:#000;\n    padding:8px 12px;\n    display:flex;\n    justify-content:space-between;\n    align-items:center;\n    font-weight:bold;\n    border:1px solid ${BORDER};\n    border-bottom:none;\n    font-family:'Times New Roman',Times,serif;\n  }\n  .header .company { font-size:14px; }\n  .header .brand { font-size:13px; letter-spacing:1px; }\n  table { border-collapse:collapse; }\n</style>\n</head>\n<body>\n  <div class=\"wrap\">\n    <div class=\"header\">\n      <div class=\"company\">${esc(companyName)}</div>\n      <div class=\"brand\">NIVESHAAY</div>\n    </div>\n    ${tableHtml}\n  </div>\n</body>\n</html>`;\n\n// ---- Plain-text version (used only if the image service is unavailable) ----\nconst dataCols = isExtended ? [1, 2, 3, 4, 5] : [1, 2, 3];\nconst wanted = [/^revenue/i, /^gross profit$/i, /^ebitda$/i, /^ebitda margin/i, /before tax/i, /^pat$/i, /^pat margin/i, /^eps/i];\nconst lines = [];\nlines.push('*' + companyName + ' - Financial Results* (Rs Cr)');\nlines.push('Period: ' + dataCols.map(i => header[i] || '').join(' | '));\nfor (let r = 1; r < rows.length; r++) {\n  const row = rows[r] || [];\n  const label = String(row[0] || '').trim();\n  if (wanted.some(re => re.test(label))) {\n    lines.push(label + ': ' + dataCols.map(i => (row[i] !== undefined && row[i] !== null && row[i] !== '') ? row[i] : '-').join(' | '));\n  }\n}\nlet textTable = lines.join('\\n');\nif (textTable.length > 1400) textTable = textTable.slice(0, 1400);\n\n// ---- Short summary parts (used by Twilio template mode) ----\nconst firstVal = (re) => {\n  for (let r = 1; r < rows.length; r++) {\n    const row = rows[r] || [];\n    if (re.test(String(row[0] || '').trim())) {\n      return (row[1] !== undefined && row[1] !== null && row[1] !== '') ? String(row[1]) : '-';\n    }\n  }\n  return '-';\n};\nconst var_parts = [\n  companyName + ' ' + (header[1] || ''),\n  'Revenue ' + firstVal(/^revenue/i) + ' | EBITDA ' + firstVal(/^ebitda$/i) + ' | PAT ' + firstVal(/^pat$/i) + ' | EPS ' + firstVal(/^eps/i) + ' (Rs Cr)',\n  'EBITDA margin ' + firstVal(/^ebitda margin/i) + ' | PAT margin ' + firstVal(/^pat margin/i)\n];\n\n// ---- hcti.io login header, built from the Config node (spaces are removed) ----\nconst cfgNode = $('Config').first().json;\nconst strip = (v) => String(v === undefined || v === null ? '' : v).replace(/\\s+/g, '');\nconst hcti_auth = 'Basic ' + Buffer.from(strip(cfgNode.hcti_api_id) + ':' + strip(cfgNode.hcti_api_key)).toString('base64');\n\nreturn [{ json: { company_name: companyName, html, text_table: textTable, var_parts, hcti_auth, number_check_warning: numberCheckWarning } }];\n"
+      },
+      "name": "Build HTML Table"
+    },
+    {
+      "id": "5839c998-9230-575c-976b-dba6a5e30d66",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2900,
+        -460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://hcti.io/v1/image",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"html\": {{ JSON.stringify($json.html) }},\n  \"viewport_width\": 800,\n  \"device_scale\": 2\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Build HTML Table').first().json.hcti_auth }}"
+            }
+          ]
+        }
+      },
+      "name": "HTML to Image",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "4837fc24-bbdd-5c9f-80d5-807556c397ca",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3160,
+        -460
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Builds one WhatsApp request per recipient.\n// delivery_provider = meta | evolution | twilio   (set in the Config node)\nconst config = $('Config').first().json;\nconst strip = (v) => String(v === undefined || v === null ? '' : v).replace(/\\s+/g, '');\nconst digits = (v) => String(v === undefined || v === null ? '' : v).replace(/\\D+/g, '');\nconst needs = (name) => {\n  const v = strip(config[name]);\n  if (!v || /^PASTE_/i.test(v)) {\n    throw new Error('Please fill \"' + name + '\" in the Config node.');\n  }\n  return v;\n};\n\nconst companyName = config.company_name || 'Company';\nconst built = $('Build HTML Table').first().json;\nconst warning = built.number_check_warning || '';\nconst text = built.text_table || (companyName + ' - Financial Results');\nconst hcti = $('HTML to Image').first().json || {};\nconst hctiUrl = (typeof hcti.url === 'string') ? hcti.url : '';\nconst mediaUrl = hctiUrl ? (/\\.(png|jpg|jpeg|webp)$/i.test(hctiUrl) ? hctiUrl : hctiUrl + '.png') : '';\n\nconst caption = (companyName + ' - Financial Results' + (warning ? '\\n' + warning : '')).slice(0, 1000);\nconst textBody = (text + (warning ? '\\n' + warning : '') + '\\n(Image could not be generated, so this result was sent as text.)').slice(0, 1550);\n\nconst provider = String(config.delivery_provider || 'meta').trim().toLowerCase();\nconst recipients = String(config.recipient_numbers || '').split(',').map(digits).filter(s => s.length >= 8);\nif (recipients.length === 0) {\n  throw new Error('Please fill \"recipient_numbers\" in the Config node (digits with country code, for example 919876543210).');\n}\n\nconst items = [];\nfor (const r of recipients) {\n  let req;\n  if (provider === 'meta') {\n    const ver = strip(config.meta_api_version) || 'v23.0';\n    const url = 'https://graph.facebook.com/' + ver + '/' + needs('meta_phone_number_id') + '/messages';\n    const payload = mediaUrl\n      ? { messaging_product: 'whatsapp', recipient_type: 'individual', to: r, type: 'image', image: { link: mediaUrl, caption: caption } }\n      : { messaging_product: 'whatsapp', recipient_type: 'individual', to: r, type: 'text', text: { preview_url: false, body: textBody } };\n    req = { url, authorization: 'Bearer ' + needs('meta_access_token'), apikey: 'none', content_type: 'application/json', body: JSON.stringify(payload) };\n  } else if (provider === 'evolution') {\n    const base = needs('evolution_url').replace(/\\/+$/, '');\n    const inst = needs('evolution_instance');\n    const payload = mediaUrl\n      ? { number: r, mediatype: 'image', mimetype: 'image/png', caption: caption, media: mediaUrl, fileName: 'pnl.png' }\n      : { number: r, text: textBody };\n    const path = mediaUrl ? '/message/sendMedia/' : '/message/sendText/';\n    req = { url: base + path + inst, authorization: 'none', apikey: needs('evolution_api_key'), content_type: 'application/json', body: JSON.stringify(payload) };\n  } else if (provider === 'twilio') {\n    const sid = needs('twilio_account_sid');\n    const token = needs('twilio_auth_token');\n    const from = digits(needs('twilio_from'));\n    const enc = encodeURIComponent;\n    const form = 'From=' + enc('whatsapp:+' + from) + '&To=' + enc('whatsapp:+' + r)\n      + (mediaUrl ? '&Body=' + enc(caption) + '&MediaUrl=' + enc(mediaUrl) : '&Body=' + enc(textBody));\n    req = { url: 'https://api.twilio.com/2010-04-01/Accounts/' + sid + '/Messages.json',\n            authorization: 'Basic ' + Buffer.from(sid + ':' + token).toString('base64'), apikey: 'none',\n            content_type: 'application/x-www-form-urlencoded', body: form };\n  } else {\n    throw new Error('delivery_provider must be meta, evolution or twilio (now: ' + provider + ').');\n  }\n  items.push({ json: {\n    to: r, provider: provider, mode: mediaUrl ? 'image' : 'text',\n    req_url: req.url, req_authorization: req.authorization, req_apikey: req.apikey,\n    req_content_type: req.content_type, req_body: req.body\n  } });\n}\nreturn items;\n"
+      },
+      "name": "Split Recipients"
+    },
+    {
+      "id": "7048e06e-8566-56c9-af91-6904ca0bb280",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3420,
+        -460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.req_url }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.req_authorization }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $json.req_apikey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "={{ $json.req_content_type }}",
+        "body": "={{ $json.req_body }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Send WhatsApp",
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "14ed99b0-8255-545c-8fae-70a6eb0e07fb",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        -460
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst ok = (j) => !!(j.sid || (j.key && j.key.id) || (Array.isArray(j.messages) && j.messages[0] && j.messages[0].id));\nconst reason = (j) => {\n  if (j.error && typeof j.error === 'object' && j.error.message) {\n    return (j.error.code ? 'Error ' + j.error.code + ': ' : '') + j.error.message;\n  }\n  if (j.response && j.response.message) {\n    return (j.status ? 'Error ' + j.status + ': ' : '') + (Array.isArray(j.response.message) ? j.response.message.join(' ') : String(j.response.message));\n  }\n  if (j.message) {\n    return (j.code ? 'Error ' + j.code + ': ' : '') + String(j.message);\n  }\n  if (typeof j.error === 'string') return j.error;\n  return JSON.stringify(j).slice(0, 300);\n};\nconst failed = items.filter(i => !ok(i.json));\nreturn [{ json: {\n  total: items.length,\n  succeeded: items.length - failed.length,\n  failed: failed.length,\n  all_succeeded: failed.length === 0 && items.length > 0,\n  first_error: failed.length ? reason(failed[0].json) : ''\n} }];\n"
+      },
+      "name": "Aggregate Sends"
+    },
+    {
+      "id": "584339db-8f80-549a-9228-8aec765389d3",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3940,
+        -460
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "93b4d035-9deb-5fbe-93ef-a20d703fbf98",
+              "leftValue": "={{ $json.all_succeeded ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Check WhatsApp"
+    },
+    {
+      "id": "5b5348c3-94a8-5226-b38b-713da071a315",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        560,
+        60
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Invalid Link",
+        "completionMessage": "Invalid link. Please paste a valid BSE/NSE PDF URL.",
+        "options": {}
+      },
+      "name": "Invalid Link",
+      "webhookId": "f39da2ab-0a3d-56b2-afef-d0d8c9710f47"
+    },
+    {
+      "id": "54b14e78-b042-5555-94f8-c6d7b73ff149",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        820,
+        60
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Download Failed",
+        "completionMessage": "Could not download the PDF. Please check the link.",
+        "options": {}
+      },
+      "name": "Download Failed",
+      "webhookId": "4341ed84-6b27-5ddf-88c5-e039f3c9e78f"
+    },
+    {
+      "id": "34705d6b-5615-5f0f-a97a-c173f485a52c",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1860,
+        60
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "AI Processing Failed",
+        "completionMessage": "AI processing failed. Please try again.",
+        "options": {}
+      },
+      "name": "AI Processing Failed",
+      "webhookId": "18ec1295-6b9e-5c02-9a21-0afc2c09ce98"
+    },
+    {
+      "id": "d2239ddf-0aa4-5fb8-9c5e-4be0048e5069",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        60
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "No P&L Found",
+        "completionMessage": "No P&L found in this PDF.",
+        "options": {}
+      },
+      "name": "No P&L Found",
+      "webhookId": "04454e1c-342e-5dbe-a27c-f5359a55a0fb"
+    },
+    {
+      "id": "9ad4ce88-416f-5170-9bda-a084af5e7590",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        2380,
+        60
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Invalid Data",
+        "completionMessage": "AI returned invalid data.",
+        "options": {}
+      },
+      "name": "Invalid Data",
+      "webhookId": "f8fa3faf-0b25-508b-af79-7e3f67394c56"
+    },
+    {
+      "id": "14b00ba8-02d5-5aa1-a73b-b82727b0f59c",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        3940,
+        -200
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "WhatsApp Failed",
+        "completionMessage": "={{ 'WhatsApp delivery failed. ' + $json.first_error }}",
+        "options": {}
+      },
+      "name": "WhatsApp Failed",
+      "webhookId": "bbf7e683-bef6-57c8-9612-55760fbff9ab"
+    },
+    {
+      "id": "0ff31d1c-8052-54c6-ba6e-e5e2d0105ad2",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        4200,
+        -460
+      ],
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "Success",
+        "completionMessage": "Done! P&L result sent to WhatsApp.",
+        "options": {}
+      },
+      "name": "Success",
+      "webhookId": "7e279cbc-1679-5215-a522-26dd5019931e"
+    }
+  ],
+  "connections": {
+    "Financial Results Processor": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Validate URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate URL": {
+      "main": [
+        [
+          {
+            "node": "Download PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download PDF": {
+      "main": [
+        [
+          {
+            "node": "Check Download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Download": {
+      "main": [
+        [
+          {
+            "node": "PDF to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF to Base64": {
+      "main": [
+        [
+          {
+            "node": "Gemini Analyze PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Analyze PDF": {
+      "main": [
+        [
+          {
+            "node": "Check Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Parse AI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Processing Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI JSON": {
+      "main": [
+        [
+          {
+            "node": "Route Parsed Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Parsed Result": {
+      "main": [
+        [
+          {
+            "node": "Number Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No P&L Found",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Processing Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Number Check": {
+      "main": [
+        [
+          {
+            "node": "Build HTML Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML Table": {
+      "main": [
+        [
+          {
+            "node": "HTML to Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML to Image": {
+      "main": [
+        [
+          {
+            "node": "Split Recipients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Recipients": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Sends": {
+      "main": [
+        [
+          {
+            "node": "Check WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WhatsApp Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Sends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "niveshaay"
+    },
+    {
+      "name": "financial-results"
+    },
+    {
+      "name": "twilio"
+    }
+  ]
+}
