@@ -1,6 +1,6 @@
 # Niveshaay - Automated Financial Results Pipeline (n8n)
 
-**Author:** Mansi Sonani  |  **Task issued by:** Arjun, Niveshaay (28 Sep 2026)  |  **Platform:** n8n 2.32.5 (self-hosted)
+**Author:** Mansi Sonani  |  **Task issued by:** Arjun, Niveshaay   |  **Platform:** n8n 2.32.5 (self-hosted)
 
 ---
 
