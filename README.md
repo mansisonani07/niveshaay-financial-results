@@ -189,5 +189,5 @@ Retry with backoff for Gemini 429/503, check delivery status through the provide
 README.md                  this file
 workflow/                  n8n workflow export (credentials removed)
 samples/                   real JSON outputs from real BSE PDFs
-screenshots/               n8n run screenshots 
+screenshots/               n8n run screenshots and proof
 ```
