@@ -1,0 +1,41 @@
+{
+  "_note": "Copied from Meta's webhook log (app 'niveshaay-test') on 2 Oct 2026, 3:14 PM. Phone numbers and account/user identifiers are redacted. Everything else is unchanged.",
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "REDACTED",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15551635633",
+              "phone_number_id": "REDACTED"
+            },
+            "contacts": [
+              { "wa_id": "REDACTED", "user_id": "REDACTED" }
+            ],
+            "statuses": [
+              {
+                "id": "REDACTED",
+                "status": "failed",
+                "timestamp": "1790934261",
+                "recipient_id": "REDACTED",
+                "errors": [
+                  {
+                    "code": 131031,
+                    "title": "Business Account locked",
+                    "message": "Business Account locked",
+                    "error_data": { "details": "Business account has been locked." },
+                    "href": "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/"
+                  }
+                ]
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
